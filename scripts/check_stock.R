@@ -26,7 +26,6 @@ check_product <- function(url) {
   response <- httr2::request(url) |>
     httr2::req_user_agent("Mozilla/5.0 (compatible; personal-stock-checker/1.0)") |>
     httr2::req_timeout(30) |>
-    httr2::req_follow_location() |>
     httr2::req_perform()
 
   if (httr2::resp_status(response) != 200) {

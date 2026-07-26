@@ -1,0 +1,62 @@
+name: Check Weverse stock
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      send_test_email:
+        description: Send a test email without changing the saved stock state
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weverse-stock-check
+  cancel-in-progress: false
+
+jobs:
+  check-stock:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install R packages
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::httr2
+            any::rvest
+            any::blastula
+            any::jsonlite
+
+      - name: Check availability and notify
+        env:
+          PRODUCT_URL: ${{ vars.PRODUCT_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          SEND_TEST_EMAIL: ${{ inputs.send_test_email || 'false' }}
+        run: Rscript scripts/check_stock.R
+
+      - name: Save changed stock state
+        run: |
+          if [ -z "$(git status --porcelain -- data/stock-status.json)" ]; then
+            echo "No stock-state change to save."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/stock-status.json
+          git commit -m "chore: record Weverse stock state"
+          git push

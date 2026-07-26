@@ -4,15 +4,10 @@ on:
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
-    inputs:
-      send_test_email:
-        description: Send a test email without changing the saved stock state
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: weverse-stock-check
@@ -34,20 +29,23 @@ jobs:
           packages: |
             any::httr2
             any::rvest
-            any::blastula
             any::jsonlite
 
-      - name: Check availability and notify
+      - name: Check availability
+        id: stock
         env:
           PRODUCT_URL: ${{ vars.PRODUCT_URL }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          SEND_TEST_EMAIL: ${{ inputs.send_test_email || 'false' }}
         run: Rscript scripts/check_stock.R
+
+      - name: Create a GitHub Issue for a restock
+        if: steps.stock.outputs.available_transition == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCT_URL: ${{ vars.PRODUCT_URL }}
+        run: |
+          gh issue create \
+            --title "Weverse restock detected" \
+            --body "The stock checker detected that the item may be available: ${PRODUCT_URL}"
 
       - name: Save changed stock state
         run: |

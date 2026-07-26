@@ -1,17 +1,16 @@
 # Weverse stock checker
 
 Checks a Weverse product page every 10 minutes with GitHub Actions. When the
-detected state changes from **unavailable** to **available**, it sends one email
-and commits the new state to `data/stock-status.json`. It will not send repeat
-emails while the item remains available. Once it is unavailable again, a later
-restock can trigger a new alert.
+detected state changes from **unavailable** to **available**, it opens a GitHub
+Issue and commits the new state to `data/stock-status.json`. GitHub can then
+email you its normal notification—no SMTP account or secrets are needed.
 
 ## What is included
 
 - `scripts/check_stock.R` fetches the page, detects purchase/sold-out controls,
-  and sends SMTP email using R.
+  and reports a stock transition to the workflow.
 - `.github/workflows/check-stock.yml` runs it on a 10-minute GitHub Actions
-  schedule and records state changes.
+  schedule, opens an Issue for a restock, and records state changes.
 
 ## GitHub setup after pushing
 
@@ -27,26 +26,13 @@ restock can trigger a new alert.
    | --- | --- |
    | `PRODUCT_URL` | `https://shop.weverse.io/en/shop/USD/artists/2/sales/63225` |
 
-4. In **Settings > Secrets and variables > Actions > Secrets**, add the six
-   secrets below. Do not put any of these values in the repository.
-
-   | Secret | Example / purpose |
-   | --- | --- |
-   | `SMTP_HOST` | `smtp.gmail.com` |
-   | `SMTP_PORT` | `465` for Gmail SSL |
-   | `SMTP_USERNAME` | Your sending email address |
-   | `SMTP_PASSWORD` | Your SMTP password (for Gmail, an app password) |
-   | `EMAIL_FROM` | Your sending email address |
-   | `EMAIL_TO` | The address that should receive the alert |
-
-5. For Gmail, enable two-step verification on the sending Google account, then
-   create a Google **App Password** and use that 16-character value as
-   `SMTP_PASSWORD`. Do not use your normal Google password.
-6. Open the repository's **Actions** tab, select **Check Weverse stock**, and
-   choose **Run workflow**. Check **Send a test email** and run it to verify
-   your email settings without changing stock state. Then run it normally; its
-   log will say whether the page was classified as available, unavailable, or
-   unknown. A real alert is sent only on a transition to available.
+4. On the repository home page, select **Watch > All Activity**. In your GitHub
+   notification settings, make sure email notifications are enabled. A detected
+   restock opens an Issue, which GitHub notifies you about by email.
+5. Open the repository's **Actions** tab, select **Check Weverse stock**, and
+   choose **Run workflow**. The log will say whether the page was classified as
+   available, unavailable, or unknown. A GitHub Issue is opened only on a
+   transition to available.
 
 ## Notes
 
@@ -55,6 +41,8 @@ restock can trigger a new alert.
 - The checker deliberately does not alert when it cannot confidently interpret
   the page. Review the workflow log in that case; Weverse can change its page
   structure or block automated requests.
+- This uses GitHub's built-in `GITHUB_TOKEN`; there are no email, API, or other
+  personal secrets to configure.
 - The script treats visible `Purchase`, `Buy now`, or `Add to cart` controls as
   available and sold-out controls as unavailable. Availability may still depend
   on a selected variant, login, or delivery address.

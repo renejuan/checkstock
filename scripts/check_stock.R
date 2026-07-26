@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
-# Checks one Weverse product page and emails only when its stock state changes
-# from unavailable to available. The state file is committed by GitHub Actions.
+# Checks one Weverse product page and exposes an availability transition to
+# GitHub Actions. The workflow then creates a GitHub Issue as the alert.
 
 default_url <- "https://shop.weverse.io/en/shop/USD/artists/2/sales/63225"
 product_url <- Sys.getenv("PRODUCT_URL", unset = default_url)
@@ -59,49 +59,9 @@ check_product <- function(url) {
   list(state = "unknown", evidence = "No purchase or stock-status control was found")
 }
 
-required_env <- function(name) {
-  value <- Sys.getenv(name)
-  if (!nzchar(value)) stop("Missing required environment variable: ", name)
-  value
-}
-
-send_notice <- function(url, evidence,
-                        subject = "Weverse stock alert: item may be available",
-                        heading = "Weverse item appears to be in stock") {
-  smtp_port <- suppressWarnings(as.integer(required_env("SMTP_PORT")))
-  if (is.na(smtp_port)) stop("SMTP_PORT must be a number")
-
-  email <- blastula::compose_email(
-    body = blastula::md(paste0(
-      "# ", heading, "\\n\\n",
-      "[Open the product page](", url, ")\\n\\n",
-      "Detection evidence: `", evidence, "`"
-    ))
-  )
-  blastula::smtp_send(
-    email = email,
-    from = required_env("EMAIL_FROM"),
-    to = required_env("EMAIL_TO"),
-    subject = subject,
-    credentials = blastula::creds(
-      username = required_env("SMTP_USERNAME"),
-      password = required_env("SMTP_PASSWORD")
-    ),
-    host = required_env("SMTP_HOST"),
-    port = smtp_port,
-    use_ssl = identical(smtp_port, 465)
-  )
-}
-
-if (identical(tolower(Sys.getenv("SEND_TEST_EMAIL")), "true")) {
-  send_notice(
-    product_url,
-    "This is a configuration test; no stock state was changed.",
-    subject = "Weverse stock checker: test email",
-    heading = "Weverse stock checker test"
-  )
-  message("Test email sent. Stock was not checked or saved.")
-  quit(status = 0)
+set_action_output <- function(name, value) {
+  output_file <- Sys.getenv("GITHUB_OUTPUT")
+  if (nzchar(output_file)) cat(name, "=", value, "\n", sep = "", file = output_file, append = TRUE)
 }
 
 previous <- read_state(state_path)
@@ -114,15 +74,14 @@ message("Checked: ", product_url)
 message("Result: ", result$state, " (", result$evidence, ")")
 
 if (identical(result$state, "unknown")) {
+  set_action_output("available_transition", "false")
   message("Stock state was not changed because the page could not be classified.")
   quit(status = 0)
 }
 
 changed <- !identical(result$state, previous$state)
-if (identical(result$state, "available") && changed) {
-  send_notice(product_url, result$evidence)
-  message("Availability email sent.")
-}
+available_transition <- identical(result$state, "available") && changed
+set_action_output("available_transition", tolower(as.character(available_transition)))
 
 if (changed) {
   next_state <- list(
@@ -134,5 +93,5 @@ if (changed) {
   jsonlite::write_json(next_state, state_path, auto_unbox = TRUE, pretty = TRUE)
   message("Stock state changed and was saved.")
 } else {
-  message("Stock state is unchanged; no email sent.")
+  message("Stock state is unchanged; no alert is needed.")
 }
